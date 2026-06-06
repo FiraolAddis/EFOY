@@ -68,6 +68,7 @@ export interface UserProfile {
   isPremium: boolean;
   isOnboarded: boolean;
   sleepSchedule?: SleepSchedule;
+  role?: "patient" | "counselor";
 }
 
 export interface DailyCheckIn {
@@ -127,3 +128,22 @@ export interface CorporateStats {
   burnoutRiskCount: number;
   adherenceRate: number; // Habit completion avg
 }
+
+export interface BreathingSession {
+  id: string;
+  date: string; // YYYY-MM-DD
+  timestamp: number;
+  roundsCompleted: number;
+  durationSeconds: number;
+}
+
+export interface ProfessionalContact {
+  id: string;
+  date: string; // YYYY-MM-DD
+  timestamp: number;
+  professionalId: string;
+  professionalName: string;
+  subject: string;
+  message: string;
+}
+

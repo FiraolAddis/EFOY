@@ -57,6 +57,24 @@ service cloud.firestore {
         && data.streakCount is int && data.streakCount >= 0;
     }
 
+    function isValidBreathingSession(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.date is string && data.date.size() <= 64
+        && data.timestamp is int
+        && data.roundsCompleted is int && data.roundsCompleted >= 0
+        && data.durationSeconds is int && data.durationSeconds >= 0;
+    }
+
+    function isValidProfessionalContact(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.date is string && data.date.size() <= 64
+        && data.timestamp is int
+        && data.professionalId is string && data.professionalId.size() <= 128
+        && data.professionalName is string && data.professionalName.size() <= 150
+        && data.subject is string && data.subject.size() <= 200
+        && data.message is string && data.message.size() <= 5000;
+    }
+
     // User document path rules
     match /users/{userId} {
       allow get: if isOwner(userId);
@@ -79,6 +97,24 @@ service cloud.firestore {
         allow list: if isOwner(userId);
         allow create: if isOwner(userId) && isValidHabit(incoming()) && isValidId(habitId);
         allow update: if isOwner(userId) && isValidHabit(incoming());
+        allow delete: if isOwner(userId);
+      }
+
+      // Breathing sessions sub-collection
+      match /breathingsessions/{sessionId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidBreathingSession(incoming()) && isValidId(sessionId);
+        allow update: if isOwner(userId) && isValidBreathingSession(incoming());
+        allow delete: if isOwner(userId);
+      }
+
+      // Professional consult contacts sub-collection
+      match /contacts/{contactId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidProfessionalContact(incoming()) && isValidId(contactId);
+        allow update: if false; // immutable once sent
         allow delete: if isOwner(userId);
       }
     }

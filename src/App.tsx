@@ -7,7 +7,9 @@ import {
   WellnessScoreBreakdown,
   Gender,
   Chronotype,
-  SleepSchedule
+  SleepSchedule,
+  BreathingSession,
+  ProfessionalContact
 } from "./types";
 
 // Import components
@@ -20,6 +22,11 @@ import PremiumCheckout from "./components/PremiumCheckout";
 import HomeIndex from "./components/HomeIndex";
 import AccountSettings from "./components/AccountSettings";
 import SomaticMilestones from "./components/SomaticMilestones";
+import LandingPage from "./components/LandingPage";
+import ProfessionalsDirectory from "./components/ProfessionalsDirectory";
+import { ProviderPortal } from "./components/ProviderPortal";
+import { MedicalDictionary } from "./components/MedicalDictionary";
+import { CounselorDashboard } from "./components/CounselorDashboard";
 
 // Firebase services
 import { 
@@ -67,7 +74,13 @@ import {
   TrendingUp,
   LogIn,
   Menu,
-  X
+  X,
+  Wind,
+  BookA,
+  ShieldCheck,
+  Settings,
+  HelpCircle,
+  PhoneCall
 } from "lucide-react";
 
 export default function App() {
@@ -115,7 +128,15 @@ export default function App() {
   });
 
   // Current screen routing tab
-  const [activeTab, setActiveTab] = useState<"home" | "wellness" | "cycle" | "medi" | "corporate" | "premium" | "settings">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "wellness" | "cycle" | "medi" | "corporate" | "premium" | "settings" | "breathing" | "guides" | "dictionary" | "provider" | "counselor_dashboard">("home");
+
+  // Routing toggle between descriptive landing / login
+  const [hasSeenLandingPage, setHasSeenLandingPage] = useState<boolean>(false);
+  const [showAuthScreen, setShowAuthScreen] = useState<boolean>(false);
+
+  // New database collections states
+  const [breathingSessions, setBreathingSessions] = useState<BreathingSession[]>([]);
+  const [submittedContacts, setSubmittedContacts] = useState<ProfessionalContact[]>([]);
 
   // History lists
   const [checkInHistory, setCheckInHistory] = useState<DailyCheckIn[]>([]);
@@ -203,6 +224,22 @@ export default function App() {
         setHabitsList([]);
         localStorage.setItem("sandbox-habits", JSON.stringify([]));
       }
+
+      const savedSessions = localStorage.getItem("sandbox-sessions");
+      if (savedSessions) {
+        setBreathingSessions(JSON.parse(savedSessions));
+      } else {
+        setBreathingSessions([]);
+        localStorage.setItem("sandbox-sessions", JSON.stringify([]));
+      }
+
+      const savedContacts = localStorage.getItem("sandbox-contacts");
+      if (savedContacts) {
+        setSubmittedContacts(JSON.parse(savedContacts));
+      } else {
+        setSubmittedContacts([]);
+        localStorage.setItem("sandbox-contacts", JSON.stringify([]));
+      }
       
       // Let's create an elegant fake user
       setFbUser({
@@ -240,6 +277,20 @@ export default function App() {
             const habitsColRef = collection(db, "users", user.uid, "habits");
             const habitsSnap = await getDocs(habitsColRef);
             setHabitsList(habitsSnap.docs.map(doc => doc.data() as Habit));
+
+            // Fetch breathing sessions subcollection
+            const sessionsColRef = collection(db, "users", user.uid, "breathingsessions");
+            const sessionsSnap = await getDocs(sessionsColRef);
+            const sessions = sessionsSnap.docs.map(doc => doc.data() as BreathingSession);
+            sessions.sort((a, b) => b.timestamp - a.timestamp);
+            setBreathingSessions(sessions);
+
+            // Fetch professional contact logs subcollection
+            const contactsColRef = collection(db, "users", user.uid, "contacts");
+            const contactsSnap = await getDocs(contactsColRef);
+            const contacts = contactsSnap.docs.map(doc => doc.data() as ProfessionalContact);
+            contacts.sort((a, b) => b.timestamp - a.timestamp);
+            setSubmittedContacts(contacts);
           } else {
             // Logged in but profile not onboarded yet
             setProfile(prev => ({
@@ -249,7 +300,11 @@ export default function App() {
             }));
           }
         } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+          console.error("Error during profile load on specific step:", error);
+          if (error instanceof Error && error.stack) {
+             console.error(error.stack);
+          }
+          handleFirestoreError(error, OperationType.GET, `users/${user.uid}/initial_load`);
         } finally {
           setIsScoreReportLoading(false);
         }
@@ -634,6 +689,59 @@ export default function App() {
     }
   };
 
+  const handleSaveBreathingSession = async (roundsCompleted: number, durationSeconds: number) => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const newSession: BreathingSession = {
+      id: `session_${Date.now()}`,
+      date: todayStr,
+      timestamp: Date.now(),
+      roundsCompleted,
+      durationSeconds
+    };
+
+    if (isSandboxMode) {
+      const updated = [newSession, ...breathingSessions];
+      setBreathingSessions(updated);
+      localStorage.setItem("sandbox-sessions", JSON.stringify(updated));
+      return;
+    }
+
+    if (!fbUser) return;
+    try {
+      const docRef = doc(db, "users", fbUser.uid, "breathingsessions", newSession.id);
+      await setDoc(docRef, newSession);
+      setBreathingSessions(prev => [newSession, ...prev]);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${fbUser.uid}/breathingsessions/${newSession.id}`);
+    }
+  };
+
+  const handleSendProfessionalContact = async (contactDraft: Omit<ProfessionalContact, "id" | "date" | "timestamp">) => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const newContact: ProfessionalContact = {
+      ...contactDraft,
+      id: `contact_${Date.now()}`,
+      date: todayStr,
+      timestamp: Date.now()
+    };
+
+    if (isSandboxMode) {
+      const updated = [newContact, ...submittedContacts];
+      setSubmittedContacts(updated);
+      localStorage.setItem("sandbox-contacts", JSON.stringify(updated));
+      return;
+    }
+
+    if (!fbUser) return;
+    try {
+      const docRef = doc(db, "users", fbUser.uid, "contacts", newContact.id);
+      await setDoc(docRef, newContact);
+      setSubmittedContacts(prev => [newContact, ...prev]);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${fbUser.uid}/contacts/${newContact.id}`);
+    }
+  };
+
   // Global Loader during initialization checks
   if (authChecking) {
     return (
@@ -644,13 +752,69 @@ export default function App() {
     );
   }
 
-  // 1. WELCOME & Google Registration Gate
-  if (!fbUser) {
+  // 0. LANDING PAGE (Always seen first)
+  if (!hasSeenLandingPage) {
+    return (
+      <div className="min-h-screen bg-[#fcfaf6] text-[#222d25] flex flex-col font-sans p-4 relative overflow-hidden">
+        {/* Header layout */}
+        <header className="max-w-7xl w-full mx-auto flex items-center justify-between py-6 px-4 z-20">
+          <div className="flex items-center gap-3">
+            <img src="/src/assets/images/vitalis_logo_1780752343589.png" alt="logo" className="h-9 w-9 rounded-xl object-cover" referrerPolicy="no-referrer" />
+            <h1 className="text-lg font-serif italic font-bold tracking-[0.1em] text-[#14231b]">Vitalis Wellness</h1>
+          </div>
+          
+          <button
+            onClick={() => {
+              setHasSeenLandingPage(true);
+              if (!fbUser) setShowAuthScreen(true);
+            }}
+            className="rounded-xl border border-[#eae6dc] bg-white text-[#2d4a3e] p-2.5 px-5 font-mono text-[10px] font-bold uppercase tracking-wider hover:border-[#2d4a3e] transition-all"
+          >
+            {fbUser ? "Enter Dashboard" : "Sign In / Portal Access"}
+          </button>
+        </header>
+
+        <LandingPage
+          onEnterSandbox={() => {
+            setIsSandboxMode(true);
+            setHasSeenLandingPage(true);
+          }}
+          onEnterGoogleAuth={() => {
+            if (fbUser) {
+              setHasSeenLandingPage(true);
+            } else {
+              handleGoogleSignIn();
+              setHasSeenLandingPage(true);
+            }
+          }}
+          onProviderRegister={() => {
+             setHasSeenLandingPage(true);
+             setActiveTab("provider");
+          }}
+        />
+      </div>
+    );
+  }
+
+  // 1. WELCOME & Google Registration Gate (Fallback when user tries to enter portal without being authenticated)
+  if (!fbUser && !isSandboxMode && activeTab !== "provider") {
     return (
       <div className="min-h-screen bg-[#fcfaf6] text-[#222d25] flex flex-col font-sans p-4 relative overflow-hidden items-center justify-center">
         {/* Soft, beautiful organic light arches */}
         <div className="absolute top-[-10%] left-[-15%] h-[600px] w-[600px] rounded-full bg-[#f2eede]/30 blur-[130px] pointer-events-none" />
         <div className="absolute bottom-[-15%] right-[-15%] h-[600px] w-[600px] rounded-full bg-[#eef4f0]/50 blur-[130px] pointer-events-none" />
+
+        <div className="w-full max-w-4xl z-10 flex justify-start mb-4">
+          <button
+            onClick={() => {
+              setShowAuthScreen(false);
+              setHasSeenLandingPage(false);
+            }}
+            className="rounded-xl bg-white border border-[#eae6dc] hover:border-neutral-400 text-[#54645a] hover:text-[#1c2e24] px-4 py-2 font-mono text-[9px] font-bold uppercase tracking-wider transition-all"
+          >
+            ← Back to Features Landing
+          </button>
+        </div>
 
         <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center py-8 z-10">
           
@@ -774,7 +938,7 @@ export default function App() {
   }
 
   // 2. ONBOARDING SEQUENCE WIZARD
-  if (!profile.isOnboarded) {
+  if (!profile.isOnboarded && activeTab !== "provider") {
     return (
       <div className="min-h-screen bg-[#fcfaf6] text-[#222d25] flex flex-col items-center justify-center font-sans p-4 relative overflow-hidden">
         {/* Organic soft ambient elements */}
@@ -812,8 +976,9 @@ export default function App() {
       <div className="absolute bottom-10 right-10 h-[500px] w-[500px] bg-[#fbf1ee]/30 rounded-full blur-[130px] pointer-events-none" />
       
       {/* SOPHISTICATED HEADER */}
-      <nav id="hud_floating_navbar" className="fixed top-0 left-0 right-0 w-full border-b border-[#f0ece2] bg-white/95 backdrop-blur-md flex items-center justify-between px-6 py-4 z-40 shadow-sm transition-all">
-        <div className="flex items-center gap-3">
+      {activeTab !== "provider" && (
+        <nav id="hud_floating_navbar" className="fixed top-0 left-0 right-0 w-full border-b border-[#f0ece2] bg-white/95 backdrop-blur-md flex items-center justify-between px-6 sm:px-10 py-5 z-40 shadow-sm transition-all">
+          <div className="flex items-center gap-3">
           <div className="h-9 w-9 rounded-xl overflow-hidden bg-white border border-[#eae6dc] flex items-center justify-center shadow-none">
             <img src="/src/assets/images/vitalis_logo_1780752343589.png" alt="Vitalis logo tiny" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
           </div>
@@ -827,15 +992,16 @@ export default function App() {
         </div>
 
         {/* Tab Selection (Desktop) */}
-        <div className="hidden lg:flex items-center bg-[#faf8f4] border border-[#eae6dc] rounded-xl p-1 gap-1">
+        <div className="hidden lg:flex items-center bg-[#faf8f4] border border-[#eae6dc] rounded-xl p-1.5 gap-2 mx-4">
           {[
             { id: "home", label: "Home", color: "text-[#2d4a3e]" },
             { id: "wellness", label: "Dashboard", color: "text-[#365942]" },
-            ...(profile.gender === Gender.FEMALE ? [{ id: "cycle", label: "Biological Rhythm", color: "text-[#8a3c25]" }] : []),
-            { id: "medi", label: "Somatic Guides", color: "text-[#2d4a3e]" },
-            { id: "corporate", label: "Enterprise Port", color: "text-[#3b3c5e]" },
-            { id: "premium", label: "Premium Tier", color: "text-[#7d561a]" },
-            { id: "settings", label: "Settings", color: "text-[#54645a]" },
+            { id: "breathing", label: "Breathe", color: "text-[#2d4a3e]" },
+            { id: "guides", label: "Network", color: "text-[#365942]" },
+            { id: "dictionary", label: "Dictionary", color: "text-[#54645a]" },
+            ...(profile.gender === Gender.FEMALE ? [{ id: "cycle", label: "Rhythm", color: "text-[#8a3c25]" }] : []),
+            ...(profile.role === "counselor" ? [{ id: "counselor_dashboard", label: "Hub", color: "text-[#1c2e24]" }] : []),
+            { id: "settings", label: <Settings size={18} />, color: "text-[#54645a]" },
           ].map((tab) => {
             const isSel = activeTab === tab.id;
             return (
@@ -843,10 +1009,10 @@ export default function App() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 type="button"
-                className={`px-4 py-1.5 rounded-lg text-[10.5px] font-mono uppercase tracking-wider transition-all duration-300 ${
+                className={`px-5 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-300 ${
                   isSel 
                     ? "bg-white text-[#1c2e24] border border-[#e1ddd3] font-bold shadow-sm" 
-                    : "text-[#54645a] hover:text-[#1c2e24]"
+                    : "text-[#54645a] hover:text-[#1c2e24] hover:bg-neutral-50/50"
                 }`}
               >
                 {tab.label}
@@ -863,16 +1029,9 @@ export default function App() {
               Age {profile.age} • {profile.gender}
             </span>
           </div>
-          
-          {profile.isPremium ? (
-            <span className="p-1 px-3 rounded-full bg-[#faf6ed] border border-[#f0e6d2] text-[#7d561a] text-[9px] font-mono font-bold tracking-widest flex items-center gap-1 shrink-0">
-              <Crown size={10} /> Tier Pro
-            </span>
-          ) : (
-            <span className="p-1 px-2.5 text-[9px] rounded-full bg-[#faf8f4] border border-[#eae6dc] text-[#54645a] font-mono tracking-widest uppercase shrink-0">
-              Free Tier
-            </span>
-          )}
+          <div className="hidden md:flex h-9 w-9 rounded-full bg-[#f2eede] text-[#7d532a] border border-[#e1ddd3] font-bold text-xs items-center justify-center shadow-inner">
+            {profile.name?.substring(0, 2).toUpperCase() || "VW"}
+          </div>
 
           <button
             onClick={handleSignOut}
@@ -904,11 +1063,13 @@ export default function App() {
               {[
                 { id: "home", label: "Home" },
                 { id: "wellness", label: "Dashboard" },
-                ...(profile.gender === Gender.FEMALE ? [{ id: "cycle", label: "Biological Rhythm" }] : []),
-                { id: "medi", label: "Somatic Guides" },
-                { id: "corporate", label: "Enterprise Port" },
-                { id: "premium", label: "Premium Tier" },
-                { id: "settings", label: "Account Settings" },
+                { id: "breathing", label: "Breathe" },
+                { id: "guides", label: "Network" },
+                { id: "dictionary", label: "Dictionary" },
+                ...(profile.gender === Gender.FEMALE ? [{ id: "cycle", label: "Rhythm" }] : []),
+                ...(profile.role === "counselor" ? [{ id: "counselor_dashboard", label: "Hub" }] : []),
+                { id: "provider", label: "Portal" },
+                { id: "settings", label: "Settings" },
               ].map((tab) => {
                 const isSel = activeTab === tab.id;
                 return (
@@ -925,7 +1086,7 @@ export default function App() {
                         : "text-[#54645a] hover:bg-[#faf9f6]"
                     }`}
                   >
-                    {tab.label}
+                    {tab.id === "settings" ? <div className="flex items-center gap-2"><Settings size={16}/> Settings</div> : tab.label}
                   </button>
                 );
               })}
@@ -933,9 +1094,45 @@ export default function App() {
           )}
         </AnimatePresence>
       </nav>
+      )}
+
+      {/* FLOATING ACTION SIDEBAR (Desktop only) */}
+      {activeTab !== "provider" && (
+        <div className="hidden lg:flex fixed right-6 top-1/2 -translate-y-1/2 flex-col gap-3 z-30">
+          <button 
+            onClick={() => setActiveTab("breathing")}
+            className="group relative p-3 rounded-full bg-white border border-[#eae6dc] text-[#54645a] hover:text-[#2d4a3e] hover:bg-[#faf8f4] hover:scale-105 transition-all shadow-sm flex items-center justify-center cursor-pointer"
+          >
+            <Wind size={20} />
+            <span className="absolute right-12 bg-[#2d4a3e] text-white text-[10px] uppercase font-mono tracking-wider py-1 px-3 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-md">
+              Breathe Session
+            </span>
+          </button>
+          
+          <button 
+            onClick={() => setShowLoggingModal(!showLoggingModal)}
+            className="group relative p-3 rounded-full bg-white border border-[#eae6dc] text-[#54645a] hover:text-[#8a3c25] hover:bg-[#faf8f4] hover:scale-105 transition-all shadow-sm flex items-center justify-center cursor-pointer"
+          >
+            <Plus size={20} />
+            <span className="absolute right-12 bg-[#8a3c25] text-white text-[10px] uppercase font-mono tracking-wider py-1 px-3 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-md">
+              Check-In Look
+            </span>
+          </button>
+
+          <button 
+            onClick={() => setActiveTab("guides")}
+            className="group relative p-3 rounded-full bg-white border border-[#eae6dc] text-[#54645a] hover:text-[#365942] hover:bg-[#faf8f4] hover:scale-105 transition-all shadow-sm flex items-center justify-center cursor-pointer"
+          >
+            <HelpCircle size={20} />
+            <span className="absolute right-12 bg-[#365942] text-white text-[10px] uppercase font-mono tracking-wider py-1 px-3 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-md">
+              Telehealth Support
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* CORE FRAME CONTAINER (Offset to accommodate the fixed navbar) */}
-      <main className="flex-1 flex flex-col p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pt-22 lg:pt-26 mt-4 lg:mt-6">
+      <main className={`flex-1 flex flex-col p-4 sm:p-6 lg:p-10 max-w-7xl w-full mx-auto space-y-8 ${activeTab !== 'provider' ? 'mt-24 lg:mt-32' : 'mt-4'}`}>
         
         {/* Soft terracotta distress alert triggers on heightened stress */}
         {isRedZoneActive && (
@@ -989,6 +1186,22 @@ export default function App() {
               <AccountSettings
                 profile={profile}
                 onUpdateProfile={handleUpdateProfile}
+              />
+            </div>
+          )}
+
+          {activeTab === "breathing" && (
+            <div className="space-y-6 animate-fadeIn">
+              <BreathingExercise onSaveSession={handleSaveBreathingSession} sessions={breathingSessions} />
+            </div>
+          )}
+
+          {activeTab === "guides" && (
+            <div className="space-y-6 animate-fadeIn">
+              <ProfessionalsDirectory
+                isAuthenticated={!!fbUser || isSandboxMode}
+                onSendContact={handleSendProfessionalContact}
+                submittedContacts={submittedContacts}
               />
             </div>
           )}
@@ -1058,18 +1271,30 @@ export default function App() {
                   </div>
 
                   {/* PARASYMPATHETIC GROUNDING ACTION CARD */}
-                  <div className="rounded-2xl border border-[#eae6dc] bg-white p-5 space-y-4 group hover:border-[#cbd0c9] transition-all duration-300 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Feather className="text-[#365942]" size={16} />
-                        <span className="text-[10px] font-mono text-[#2d4a3e] uppercase tracking-widest font-bold">Vagal Nerve Regulation</span>
+                  <div className="rounded-2xl border border-[#eae6dc] bg-white p-5 space-y-4 group hover:border-[#cbd0c9] transition-all duration-300 shadow-sm flex flex-col justify-between">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Feather className="text-[#365942]" size={16} />
+                          <span className="text-[10px] font-mono text-[#2d4a3e] uppercase tracking-widest font-bold">Vagal Nerve Regulation</span>
+                        </div>
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#365942]" />
                       </div>
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#365942] animate-ping" />
+
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-semibold text-[#1c2e24]">Audiotherapeutic Breath Coach</h4>
+                        <p className="text-[11px] text-[#54645a] leading-relaxed">
+                          Stimulate your vagus nerve and balance active physiological cortisol with voice guidance (Text-to-Speech) and complete historic milestone sync.
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="p-1 rounded-xl bg-[#faf8f4] border border-[#f3eee2]">
-                      <BreathingExercise />
-                    </div>
+                    <button
+                      onClick={() => setActiveTab("breathing")}
+                      className="w-full rounded-xl bg-[#2d4a3e] hover:bg-[#1e3328] text-white p-2.5 px-4 text-[10px] font-mono font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 mt-2"
+                    >
+                      <Wind size={12} /> Launch Breathing Coach
+                    </button>
                   </div>
 
                   {/* DYNAMIC TREATMENT BUILDER (HABITS LIST) */}
@@ -1386,43 +1611,28 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "medi" && (
+          {activeTab === "dictionary" && (
             <div className="space-y-6 animate-fadeIn">
-              {!profile.isPremium ? (
-                <div className="rounded-3xl border border-[#eae6dc] bg-white p-10 text-center max-w-lg mx-auto space-y-6 shadow-sm">
-                  <div className="h-12 w-12 rounded-full bg-[#faf6ed] border border-[#f0e6d2] flex items-center justify-center text-[#7d561a] mx-auto animate-pulse">
-                    <Lock size={20} />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <h3 className="text-base font-bold font-mono tracking-wider text-[#1c2e24] uppercase">Somatic Indices Locked</h3>
-                    <p className="text-xs text-[#54645a] leading-relaxed max-w-md mx-auto font-medium font-sans">
-                      Our interactive Somatic Symptoms Explorer, pharmacotherapy indexes, and clinical consultation channels interface directly with high-dimensional server pipelines, requiring Premium membership levels.
-                    </p>
-                  </div>
-                  
-                  <button
-                    onClick={() => setActiveTab("premium")}
-                    className="w-full rounded-xl bg-[#2d4a3e] hover:bg-[#1e3328] text-white font-bold font-mono text-xs py-3.5 px-6 tracking-widest uppercase transition-all shadow-sm"
-                  >
-                    ACTIVATE PREMIUM SUBSCRIPTION
-                  </button>
-                </div>
-              ) : (
-                <MedIHub profile={profile} />
-              )}
+              <MedicalDictionary />
             </div>
           )}
 
-          {activeTab === "corporate" && (
+          {activeTab === "provider" && (
             <div className="space-y-6 animate-fadeIn">
-              <CorporateDashboard />
+              <ProviderPortal 
+                onBack={() => setActiveTab("home")} 
+                onLoginAsCounselor={(name) => {
+                   setIsSandboxMode(true);
+                   handleUpdateProfile({ ...profile, name: name || "Dr. Counselor", role: "counselor", isOnboarded: true });
+                   setActiveTab("counselor_dashboard");
+                }}
+              />
             </div>
           )}
 
-          {activeTab === "premium" && (
+          {activeTab === "counselor_dashboard" && (
             <div className="space-y-6 animate-fadeIn">
-              <PremiumCheckout isPremium={profile.isPremium} onUpgradeComplete={handleUpgradeComplete} />
+              <CounselorDashboard />
             </div>
           )}
 
@@ -1430,32 +1640,35 @@ export default function App() {
       </main>
 
       {/* CONTEMPORARY FLOATING MOBILE TABS MENU */}
-      <div id="hud_floating_pill_menu" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white/95 backdrop-blur-xl border border-[#eae6dc] rounded-2xl p-1.5 shadow-lg flex items-center gap-1 max-w-[95vw] lg:hidden">
-        {[
-          { id: "home", label: "Home", icon: Heart },
-          { id: "wellness", label: "Dashboard", icon: Activity },
-          { id: "cycle", label: "Rhythm", icon: Calendar },
-          { id: "medi", label: "Guides", icon: Stethoscope },
-        ].map((item) => {
-          const isSel = activeTab === item.id;
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id as any)}
-              type="button"
-              className={`p-2 px-3 rounded-xl transition-all flex items-center gap-1.5 shrink-0 ${
-                isSel
-                  ? "bg-[#eef4f0] text-[#2d4a3e] font-bold border border-[#d3e5db]"
-                  : "text-[#54645a] hover:text-[#1c2e24]"
-              }`}
-            >
-              <Icon size={14} />
-              {isSel && <span className="text-[10px] font-mono tracking-wider uppercase font-bold">{item.label}</span>}
-            </button>
-          );
-        })}
-      </div>
+      {activeTab !== "provider" && (
+        <div id="hud_floating_pill_menu" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white/95 backdrop-blur-xl border border-[#eae6dc] rounded-2xl p-1.5 shadow-lg flex items-center gap-1 max-w-[95vw] lg:hidden overflow-x-auto">
+          {[
+            { id: "home", label: "Home", icon: Heart },
+            { id: "wellness", label: "Dashboard", icon: Activity },
+            { id: "breathing", label: "Breathe", icon: Wind },
+            { id: "dictionary", label: "Dictionary", icon: BookA },
+            { id: "guides", label: "Network", icon: Stethoscope },
+          ].map((item) => {
+            const isSel = activeTab === item.id;
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id as any)}
+                type="button"
+                className={`p-2 px-3 rounded-xl transition-all flex items-center gap-1.5 shrink-0 ${
+                  isSel
+                    ? "bg-[#eef4f0] text-[#2d4a3e] font-bold border border-[#d3e5db]"
+                    : "text-[#54645a] hover:text-[#1c2e24]"
+                }`}
+              >
+                <Icon size={14} />
+                {isSel && <span className="text-[10px] font-mono tracking-wider uppercase font-bold">{item.label}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* MODALS & POPUPS */}
       
