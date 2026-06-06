@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User orientation profile, gender context, physiological baseline, and premium subscription state.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "age": { "type": "integer" },
+        "gender": { "type": "string" },
+        "isPremium": { "type": "boolean" },
+        "isOnboarded": { "type": "boolean" }
+      },
+      "required": ["name", "age", "gender", "isPremium", "isOnboarded"]
+    },
+    "DailyCheckIn": {
+      "title": "DailyCheckIn",
+      "description": "Daily bio-telemetry check-in for physical and mental anxiety states.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "stressScore": { "type": "integer" },
+        "sleepQuality": { "type": "integer" },
+        "energyLevel": { "type": "integer" },
+        "moodNotes": { "type": "string" },
+        "symptomsLogged": { "type": "array" }
+      },
+      "required": ["id", "date", "stressScore", "sleepQuality", "energyLevel", "moodNotes", "symptomsLogged"]
+    },
+    "Habit": {
+      "title": "Habit",
+      "description": "Personalized habit routine tracking for somatic system stability.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "targetCondition": { "type": "string" },
+        "isCompletedToday": { "type": "boolean" },
+        "streakCount": { "type": "integer" },
+        "lastCompletedDate": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "category", "targetCondition", "isCompletedToday", "streakCount"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Individual user profiles containing billing, demographics, and clinical preferences."
+    },
+    "/users/{userId}/checkins/{checkInId}": {
+      "schema": "DailyCheckIn",
+      "description": "Underlying biofeedback logs and somatic records."
+    },
+    "/users/{userId}/habits/{habitId}": {
+      "schema": "Habit",
+      "description": "Conditioned habits generated for mental/physical coherence support."
+    }
+  }
+}

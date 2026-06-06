@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation blueprints
+    function isValidUserProfile(data) {
+      return data.name is string && data.name.size() <= 100
+        && data.age is int && data.age >= 0 && data.age <= 125
+        && data.gender is string && data.gender.size() <= 50
+        && data.isPremium is bool
+        && data.isOnboarded is bool;
+    }
+
+    function isValidCheckIn(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.date is string && data.date.size() <= 64
+        && data.stressScore is int && data.stressScore >= 0 && data.stressScore <= 10
+        && data.sleepQuality is int && data.sleepQuality >= 0 && data.sleepQuality <= 10
+        && data.energyLevel is int && data.energyLevel >= 0 && data.energyLevel <= 10
+        && data.moodNotes is string && data.moodNotes.size() <= 1000
+        && data.symptomsLogged is list;
+    }
+
+    function isValidHabit(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 200
+        && data.description is string && data.description.size() <= 1000
+        && data.category is string && data.category.size() <= 100
+        && data.targetCondition is string && data.targetCondition.size() <= 200
+        && data.isCompletedToday is bool
+        && data.streakCount is int && data.streakCount >= 0;
+    }
+
+    // User document path rules
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(incoming());
+      allow update: if isOwner(userId) && isValidUserProfile(incoming());
+      allow delete: if isOwner(userId);
+
+      // Daily checkins sub-collection
+      match /checkins/{checkInId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidCheckIn(incoming()) && isValidId(checkInId);
+        allow update: if isOwner(userId) && isValidCheckIn(incoming());
+        allow delete: if isOwner(userId);
+      }
+
+      // Personalized habits sub-collection
+      match /habits/{habitId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHabit(incoming()) && isValidId(habitId);
+        allow update: if isOwner(userId) && isValidHabit(incoming());
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

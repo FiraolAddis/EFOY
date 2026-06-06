@@ -1,6 +1,6 @@
 {
-  "name": "Aura - Personalized Wellness Companion",
-  "description": "An AI-driven holistic wellness application focusing on mental health, providing highly personalized interventions, basic well-being exercises, a cycle tracker, real-time stress detection, and a medical information hub.",
+  "name": "Personalized Wellness Companion",
+  "description": "An AI-powered holistic health platform supporting mental well-being, physiological integration, cycle tracking, and strategic recovery guides.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
